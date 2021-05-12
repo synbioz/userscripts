@@ -23,6 +23,7 @@
     ["to deploy::staging", "to deploy::production"]
   ];
 
+  const initialStates = states.map(node => node[0]);
   const transitions = new Map(states);
   const label = document.querySelector(".labels");
 
@@ -38,7 +39,11 @@
 
     const content = node.textContent.trim() + scope;
 
-    map.set(content, [node, sibling].compact());
+    // we don't want to keep track of label's node not part
+    // of the states we are watching
+    if (initialStates.includes(content)) {
+      map.set(content, [node, sibling].compact());
+    }
 
     return map;
   }, new Map());
