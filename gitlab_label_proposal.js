@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gitlab label proposal
 // @namespace    https://www.synbioz.com/
-// @version      0.1.0
+// @version      0.2.0
 // @description  Label proposal for gitlab
 // @author       Martin Catty
 // @include      /^https:\/\/git\.synbioz\.com/.*/issues/\d
@@ -11,10 +11,14 @@
 // ==/UserScript==
 
 (function() {
+  Array.prototype.compact = function() {
+    return this.filter(x => x !== undefined && x !== null);
+  };
+
   const states = [
     ["to do", "doing"],
     ["doing", "to validate::functionally"],
-    ["to validate::functionally", "to validate::technically"],
+    ["to validate::functionally", ["to do", "to validate::technically"]],
     ["to validate::technically", "to deploy::staging"],
     ["to deploy::staging", "to deploy::production"]
   ];
@@ -22,20 +26,24 @@
   const transitions = new Map(states);
   const label = document.querySelector(".labels");
 
-  const currentLabels = Array.from(document.querySelectorAll(".labels .gl-label-text")).map(node => {
+  // Create a map from existing labels, using this form :
+  // { "label" => [node1, node2] }
+  const labelsToNodes = Array.from(document.querySelectorAll(".labels .gl-label-text")).reduce((map, node) => {
     const sibling = node.nextElementSibling;
     let scope = "";
 
-    // In case of a scoped label, like to validate::functionally we need to get the scope
-    // from the next sibling
     if (sibling !== undefined && sibling !== null) {
       scope = "::" + sibling.textContent.trim();
     }
 
-    return node.innerHTML.trim() + scope;
-  });
+    const content = node.textContent.trim() + scope;
 
-  const nextLabels = currentLabels.map(label => transitions.get(label)).filter(x => x !== undefined);
+    map.set(content, [node, sibling].compact());
+
+    return map;
+  }, new Map());
+
+  const nextLabels = Array.from(labelsToNodes.keys()).map(label => transitions.get(label)).compact().flat();
 
   const header = `
       <div class="title hide-collapsed gl-mb-3">
@@ -88,6 +96,20 @@
       }).then(response => {
         if (response.ok) {
           node.remove();
+
+          // remove existing labels
+          labelsToNodes.forEach((nodes, key) => {
+            // there can be 2 nodes (including the scope), we only need one,
+            // they have the same parent
+            const node = nodes[0];
+            const cross = node.parentNode.nextElementSibling;
+
+            if (cross) {
+              const event = new Event("click");
+
+              cross.dispatchEvent(event);
+            }
+          });
         }
       });
     });
